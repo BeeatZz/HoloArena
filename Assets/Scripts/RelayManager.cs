@@ -47,7 +47,7 @@ public class RelayManager : MonoBehaviour
         roomInfoText.text = "- -";
     }
 
-   
+
     public async void CreateRoom(int maxPlayers = 2)
     {
         string userName = usernameInput.text;
@@ -59,24 +59,11 @@ public class RelayManager : MonoBehaviour
 
         try
         {
-            string lobbyName = userName + "'s Lobby";
-            bool isPrivate = privateToggle != null && privateToggle.isOn;
-
-            CreateLobbyOptions options = new CreateLobbyOptions
-            {
-                IsPrivate = false,
-                Data = new Dictionary<string, DataObject>
-            {
-                {
-                    "HostName", new DataObject(DataObject.VisibilityOptions.Public, userName) }
-                }
-            };
-
-
-            currentLobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, options);
-
+            // Create Relay allocation first
             Allocation allocation = await RelayService.Instance.CreateAllocationAsync(maxPlayers);
+            string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
 
+            // Set NetworkTransport data
             var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
             transport.SetRelayServerData(
                 allocation.RelayServer.IpV4,
@@ -86,18 +73,32 @@ public class RelayManager : MonoBehaviour
                 allocation.ConnectionData
             );
 
+            // Start host
             bool started = NetworkManager.Singleton.StartHost();
-            if (started)
-            {
-                //roomInfoText.text = $"Hosting {currentLobby.Name} ({currentLobby.Players.Count}/{currentLobby.MaxPlayers})";
-                Debug.Log($"Lobby hosted: {currentLobby.Name}");
-                UnityEngine.SceneManagement.SceneManager.LoadScene("LobbyScene");
-
-            }
-            else
+            if (!started)
             {
                 Debug.LogError("Failed to start host");
+                return;
             }
+
+            // Create LobbyService lobby and store the join code
+            string lobbyName = userName + "'s Lobby";
+            CreateLobbyOptions options = new CreateLobbyOptions
+            {
+                IsPrivate = privateToggle != null && privateToggle.isOn,
+                Data = new Dictionary<string, DataObject>
+            {
+                { "RelayJoinCode", new DataObject(DataObject.VisibilityOptions.Member, joinCode) },
+                { "HostName", new DataObject(DataObject.VisibilityOptions.Public, userName) }
+            }
+            };
+
+            currentLobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, options);
+
+            Debug.Log($"Lobby hosted: {currentLobby.Name} | Join Code: {joinCode}");
+
+            // Move to LobbyScene
+            UnityEngine.SceneManagement.SceneManager.LoadScene("LobbyScene");
         }
         catch (LobbyServiceException e)
         {
@@ -201,19 +202,19 @@ public class RelayManager : MonoBehaviour
 
         try
         {
-            currentLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyToJoin.Id);
+            // Join LobbyService lobby
+            Lobby joinedLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyToJoin.Id);
 
-            var updatePlayerOptions = new UpdatePlayerOptions
+            // Get the Relay join code stored in lobby data
+            if (!joinedLobby.Data.TryGetValue("RelayJoinCode", out DataObject joinCodeObj))
             {
-                Data = new Dictionary<string, PlayerDataObject>
-                {
-                    { "PlayerName", new PlayerDataObject(PlayerDataObject.VisibilityOptions.Member, userName) }
-                }
-            };
-            await LobbyService.Instance.UpdatePlayerAsync(currentLobby.Id, AuthenticationService.Instance.PlayerId, updatePlayerOptions);
+                Debug.LogError("Relay join code missing in lobby data");
+                return;
+            }
+            string joinCode = joinCodeObj.Value;
 
-            
-            JoinAllocation joinAlloc = await RelayService.Instance.JoinAllocationAsync(currentLobby.Id); 
+            // Join Relay allocation
+            JoinAllocation joinAlloc = await RelayService.Instance.JoinAllocationAsync(joinCode);
 
             var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
             transport.SetRelayServerData(
@@ -225,14 +226,18 @@ public class RelayManager : MonoBehaviour
                 joinAlloc.HostConnectionData
             );
 
-            if (!NetworkManager.Singleton.StartClient())
+            // Start client
+            bool started = NetworkManager.Singleton.StartClient();
+            if (!started)
+            {
                 Debug.LogError("Failed to start client");
-            else
-                Debug.Log($"Joined lobby: {currentLobby.Name}");
-                UnityEngine.SceneManagement.SceneManager.LoadScene("LobbyScene");
+                return;
+            }
 
+            Debug.Log("Joined lobby: " + joinedLobby.Name);
 
-
+            // Move to LobbyScene
+            UnityEngine.SceneManagement.SceneManager.LoadScene("LobbyScene");
         }
         catch (LobbyServiceException e)
         {
@@ -243,4 +248,5 @@ public class RelayManager : MonoBehaviour
             Debug.LogError("RelayServiceException: " + e);
         }
     }
+
 }
