@@ -171,15 +171,14 @@ public class RelayManager : MonoBehaviour
 
             foreach (Lobby lobby in response.Results)
             {
-                GameObject entry = Instantiate(lobbyEntryPrefab, lobbyListParent);
-                TMP_Text txt = entry.GetComponentInChildren<TMP_Text>();
-                if (txt != null)
-                    txt.text = $"{lobby.Name} ({lobby.Players.Count}/{lobby.MaxPlayers})";
-
-                Button btn = entry.GetComponentInChildren<Button>();
-                if (btn != null)
-                    btn.onClick.AddListener(() => JoinRoom(lobby));
+                GameObject entryGO = Instantiate(lobbyEntryPrefab, lobbyListParent);
+                LobbyEnter entryUI = entryGO.GetComponent<LobbyEnter>();
+                if (entryUI != null)
+                {
+                    entryUI.Setup(lobby); // Pass the lobby to the prefab
+                }
             }
+
 
             Debug.Log("Found " + response.Results.Count + " joinable lobbies");
         }
