@@ -14,12 +14,13 @@ using Unity.Services.Relay.Models;
 
 public class RelayManager : MonoBehaviour
 {
-    [Header("UI References")]
     public TMP_InputField usernameInput;
+    public TMP_InputField searchInput;
+    public TMP_InputField roomCodeInput;
     public TMP_Text roomInfoText;
     public Transform lobbyListParent;
     public GameObject lobbyEntryPrefab;
-
+    public Toggle privateToggle;
     private static RelayManager instance;
     public static RelayManager Instance => instance;
 
@@ -46,9 +47,7 @@ public class RelayManager : MonoBehaviour
         roomInfoText.text = "- -";
     }
 
-    /// <summary>
-    /// Host a new lobby (Max 2 players by default)
-    /// </summary>
+   
     public async void CreateRoom(int maxPlayers = 2)
     {
         string userName = usernameInput.text;
@@ -60,21 +59,24 @@ public class RelayManager : MonoBehaviour
 
         try
         {
-            // 1. Create lobby in Multiplayer Services
+            string lobbyName = userName + "'s Lobby";
+            bool isPrivate = privateToggle != null && privateToggle.isOn;
+
             CreateLobbyOptions options = new CreateLobbyOptions
             {
-                IsPrivate = false, // public lobby
+                IsPrivate = false,
                 Data = new Dictionary<string, DataObject>
+            {
                 {
-                    { "HostName", new DataObject(DataObject.VisibilityOptions.Public, userName) }
+                    "HostName", new DataObject(DataObject.VisibilityOptions.Public, userName) }
                 }
             };
-            currentLobby = await LobbyService.Instance.CreateLobbyAsync("Lobby_" + Random.Range(1000, 9999), maxPlayers, options);
 
-            // 2. Create Relay allocation for host
+
+            currentLobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, options);
+
             Allocation allocation = await RelayService.Instance.CreateAllocationAsync(maxPlayers);
 
-            // 3. Provide Relay server data to Netcode Transport
             var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
             transport.SetRelayServerData(
                 allocation.RelayServer.IpV4,
@@ -84,12 +86,13 @@ public class RelayManager : MonoBehaviour
                 allocation.ConnectionData
             );
 
-            // 4. Start Netcode host
             bool started = NetworkManager.Singleton.StartHost();
             if (started)
             {
-                roomInfoText.text = $"Hosting {currentLobby.Name} ({currentLobby.Players.Count}/{currentLobby.MaxPlayers})";
+                //roomInfoText.text = $"Hosting {currentLobby.Name} ({currentLobby.Players.Count}/{currentLobby.MaxPlayers})";
                 Debug.Log($"Lobby hosted: {currentLobby.Name}");
+                UnityEngine.SceneManagement.SceneManager.LoadScene("LobbyScene");
+
             }
             else
             {
@@ -106,9 +109,48 @@ public class RelayManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Refresh the lobby browser list
-    /// </summary>
+    public async void JoinLobbyByCode()
+    {
+        string code = roomCodeInput.text.Trim();
+        if (string.IsNullOrEmpty(code))
+        {
+            Debug.LogWarning("Join code is empty");
+            return;
+        }
+
+        try
+        {
+            Lobby joinedLobby = await LobbyService.Instance.JoinLobbyByCodeAsync(code);
+
+            if (!joinedLobby.Data.TryGetValue("JoinCode", out DataObject joinCodeObj))
+            {
+                Debug.LogError("JoinCode missing in lobby data");
+                return;
+            }
+            string joinCode = joinCodeObj.Value;
+
+            JoinAllocation joinAlloc = await RelayService.Instance.JoinAllocationAsync(joinCode);
+
+            var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+            transport.SetRelayServerData(
+                joinAlloc.RelayServer.IpV4,
+                (ushort)joinAlloc.RelayServer.Port,
+                joinAlloc.AllocationIdBytes,
+                joinAlloc.Key,
+                joinAlloc.ConnectionData,
+                joinAlloc.HostConnectionData
+            );
+
+            NetworkManager.Singleton.StartClient();
+            Debug.Log("Joined private lobby with code: " + code);
+            UnityEngine.SceneManagement.SceneManager.LoadScene("LobbyScene");
+
+        }
+        catch (LobbyServiceException e)
+        {
+            Debug.LogError("Failed to join lobby by code: " + e);
+        }
+    }
     public async void RefreshLobbies()
     {
         try
@@ -118,16 +160,15 @@ public class RelayManager : MonoBehaviour
                 Filters = new List<QueryFilter>
                 {
                     new QueryFilter(QueryFilter.FieldOptions.AvailableSlots, "0", QueryFilter.OpOptions.GT)
-                }
+                }   
             };
+
 
             QueryResponse response = await LobbyService.Instance.QueryLobbiesAsync(queryOptions);
 
-            // Clear previous list
             foreach (Transform child in lobbyListParent)
                 Destroy(child.gameObject);
 
-            // Populate UI
             foreach (Lobby lobby in response.Results)
             {
                 GameObject entry = Instantiate(lobbyEntryPrefab, lobbyListParent);
@@ -140,7 +181,7 @@ public class RelayManager : MonoBehaviour
                     btn.onClick.AddListener(() => JoinRoom(lobby));
             }
 
-            Debug.Log($"Found {response.Results.Count} joinable lobbies");
+            Debug.Log("Found " + response.Results.Count + " joinable lobbies");
         }
         catch (LobbyServiceException e)
         {
@@ -148,9 +189,8 @@ public class RelayManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Join a selected lobby
-    /// </summary>
+
+
     public async void JoinRoom(Lobby lobbyToJoin)
     {
         string userName = usernameInput.text;
@@ -162,10 +202,8 @@ public class RelayManager : MonoBehaviour
 
         try
         {
-            // 1. Join the lobby
             currentLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyToJoin.Id);
 
-            // 2. Update player data (username)
             var updatePlayerOptions = new UpdatePlayerOptions
             {
                 Data = new Dictionary<string, PlayerDataObject>
@@ -175,10 +213,8 @@ public class RelayManager : MonoBehaviour
             };
             await LobbyService.Instance.UpdatePlayerAsync(currentLobby.Id, AuthenticationService.Instance.PlayerId, updatePlayerOptions);
 
-            // 3. Retrieve Relay allocation info from host
-            // Here we assume the host has already created a relay allocation and published it via Lobby data
-            // For now, in simple 2-player setup, you can create a new relay join allocation by lobby ID
-            JoinAllocation joinAlloc = await RelayService.Instance.JoinAllocationAsync(currentLobby.Id); // adjust if needed
+            
+            JoinAllocation joinAlloc = await RelayService.Instance.JoinAllocationAsync(currentLobby.Id); 
 
             var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
             transport.SetRelayServerData(
@@ -190,11 +226,14 @@ public class RelayManager : MonoBehaviour
                 joinAlloc.HostConnectionData
             );
 
-            // 4. Start Netcode client
             if (!NetworkManager.Singleton.StartClient())
                 Debug.LogError("Failed to start client");
             else
                 Debug.Log($"Joined lobby: {currentLobby.Name}");
+                UnityEngine.SceneManagement.SceneManager.LoadScene("LobbyScene");
+
+
+
         }
         catch (LobbyServiceException e)
         {
