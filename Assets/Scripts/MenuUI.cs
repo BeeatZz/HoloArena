@@ -6,13 +6,13 @@ public class MenuUI : MonoBehaviour
     public TMP_InputField usernameInput;
     public TMP_InputField joinCodeInput;
 
-    public void OnCreateRoom()
+    public void OnCreateRoom(int players)
     {
-        RelayManager.Instance.CreateRoom();
+        RelayManager.Instance.CreateRoom(usernameInput.text,players);
     }
 
     public void OnJoinByCode()
     {
-        RelayManager.Instance.JoinLobbyByCode(joinCodeInput.text);
+        RelayManager.Instance.JoinLobbyByCode(usernameInput.text, joinCodeInput.text);
     }
 }

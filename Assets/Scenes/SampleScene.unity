@@ -1656,7 +1656,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1121488441}
   m_HandleRect: {fileID: 1121488440}
   m_Direction: 2
-  m_Value: 1
+  m_Value: 0
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -1781,6 +1781,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0fdbfeef64bfd2e45ae8cc41cc55cd72, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RelayManager
+  localUsername: 
 --- !u!4 &951431714
 Transform:
   m_ObjectHideFlags: 0
@@ -2916,7 +2917,7 @@ GameObject:
   - component: {fileID: 1631022347}
   - component: {fileID: 1631022349}
   m_Layer: 5
-  m_Name: InputField (TMP)
+  m_Name: UsernameInput
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3944,11 +3945,11 @@ MonoBehaviour:
       - m_Target: {fileID: 1778307839}
         m_TargetAssemblyTypeName: MenuUI, Assembly-CSharp
         m_MethodName: OnCreateRoom
-        m_Mode: 1
+        m_Mode: 3
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
           m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 2
+          m_IntArgument: 4
           m_FloatArgument: 0
           m_StringArgument: 
           m_BoolArgument: 0
@@ -4194,7 +4195,7 @@ MonoBehaviour:
     Prefabs:
       NetworkPrefabsLists:
       - {fileID: 11400000, guid: 8536cb404d37ffb4daf762f16e2778f0, type: 2}
-    TickRate: 30
+    TickRate: 60
     ClientConnectionBufferTimeout: 10
     ConnectionApproval: 0
     ConnectionData: 

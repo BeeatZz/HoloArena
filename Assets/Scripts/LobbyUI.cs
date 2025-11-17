@@ -33,7 +33,7 @@ public class LobbyUI : MonoBehaviour
             LobbyEntryUI entryUI = entryGO.GetComponent<LobbyEntryUI>();
             if (entryUI != null)
             {
-                entryUI.Setup(lobby, userName);
+                entryUI.Setup(lobby);
             }
         }
     }

@@ -19,6 +19,8 @@ public class RelayManager : MonoBehaviour
     private Lobby currentLobby;
     private bool isInitialized = false;
     private string playerProfileId;
+    public string localUsername;
+
 
     private async void Awake()
     {
@@ -34,9 +36,7 @@ public class RelayManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Initialize Unity Services and automatically sign in with a random profile.
-    /// </summary>
+  
     private async Task InitializeServicesAndAuth()
     {
         if (!isInitialized)
@@ -48,12 +48,9 @@ public class RelayManager : MonoBehaviour
         await SignInWithRandomProfile();
     }
 
-    /// <summary>
-    /// Signs in with a random profile ID. Safe for multiple local editor instances.
-    /// </summary>
+   
     public async Task SignInWithRandomProfile()
     {
-        // Generate a random profile
         playerProfileId = "Player_" + Random.Range(1000, 9999);
         AuthenticationService.Instance.SwitchProfile(playerProfileId);
 
@@ -68,9 +65,6 @@ public class RelayManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Ensure the player is authenticated. If not, automatically signs in.
-    /// </summary>
     public async Task<bool> EnsureAuthentication()
     {
         if (!AuthenticationService.Instance.IsSignedIn)
@@ -83,18 +77,24 @@ public class RelayManager : MonoBehaviour
 
     #region Room Creation & Joining
 
-    public async Task CreateRoom(int maxPlayers = 4)
+    public async Task CreateRoom(string username, int maxPlayers = 4)
     {
         if (!await EnsureAuthentication())
             return;
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            Debug.LogWarning("Username cannot be empty.");
+            return;
+        }
 
-        // Create Relay Allocation
+
+        this.localUsername = username;
+
         Allocation allocation = await RelayService.Instance.CreateAllocationAsync(maxPlayers);
         string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
 
         Debug.Log("Relay Join Code: " + joinCode);
 
-        // Setup Unity Transport for Relay
         SetupRelayTransport(
             allocation.RelayServer.IpV4,
             (ushort)allocation.RelayServer.Port,
@@ -109,26 +109,35 @@ public class RelayManager : MonoBehaviour
             return;
         }
 
-        // Create Lobby
         var options = new CreateLobbyOptions()
         {
             IsPrivate = false,
             Data = new Dictionary<string, DataObject>()
-            {
-                { "RelayJoinCode", new DataObject(DataObject.VisibilityOptions.Member, joinCode) },
-                { "HostName", new DataObject(DataObject.VisibilityOptions.Public, playerProfileId) }
-            }
+        {
+            { "RelayJoinCode", new DataObject(DataObject.VisibilityOptions.Member, joinCode) },
+
+            { "HostName", new DataObject(DataObject.VisibilityOptions.Public, username) }
+        }
         };
 
-        currentLobby = await LobbyService.Instance.CreateLobbyAsync(playerProfileId + "'s Lobby", maxPlayers, options);
+        string lobbyName = $"{username}'s Lobby (1/{maxPlayers})";
+
+        currentLobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, options);
 
         UnityEngine.SceneManagement.SceneManager.LoadScene("LobbyScene");
     }
 
-    public async Task JoinLobbyByCode(string roomCode)
+    public async Task JoinLobbyByCode(string username, string roomCode)
     {
         if (!await EnsureAuthentication())
             return;
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            Debug.LogWarning("Username cannot be empty.");
+            return;
+        }
+
+        this.localUsername = username;
 
         Lobby joinedLobby = await LobbyService.Instance.JoinLobbyByCodeAsync(roomCode);
 
@@ -142,10 +151,17 @@ public class RelayManager : MonoBehaviour
         UnityEngine.SceneManagement.SceneManager.LoadScene("LobbyScene");
     }
 
-    public async Task JoinRoom(Lobby targetLobby)
+    public async Task JoinRoom(string username, Lobby targetLobby)
     {
         if (!await EnsureAuthentication())
             return;
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            Debug.LogWarning("Username cannot be empty.");
+            return;
+        }
+
+        this.localUsername = username;
 
         Lobby joined = await LobbyService.Instance.JoinLobbyByIdAsync(targetLobby.Id);
 
