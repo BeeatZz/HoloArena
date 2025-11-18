@@ -3,55 +3,104 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class ChatManager : NetworkBehaviour
+public class LobbyChatManager : NetworkBehaviour
 {
+    [Header("UI References")]
+    [SerializeField] private GameObject chatMessagePrefab; 
+    [SerializeField] private Transform chatContent;       
 
-    [SerializeField]
-    private TMP_Text chatText;
-    [SerializeField]
-    private TMP_InputField chatInput;
+    [SerializeField] private TMP_InputField chatInput;  
+    [SerializeField] private ScrollRect scrollRect;
 
-    public TMP_Text userListLog;
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-
-    public override void OnNetworkSpawn()
+    private void Start()
     {
-        base.OnNetworkSpawn();
-        UserListManager.Singleton.RefreshUserConnectedListClientRPC(UserListManager.Singleton.userConnectedList.ToArray());
-    }
-    void Start()
-    {
-        
-    }
+        if (chatInput != null)
+            chatInput.onSubmit.AddListener(OnInputSubmit);
 
-    // Update is called once per frame
-    void Update()
-    {
-        
+        if (NetworkManager.Singleton.IsHost)
+        {
+            StartCoroutine(SendLobbyCodeWhenReady());
+        }
     }
 
+    private System.Collections.IEnumerator SendLobbyCodeWhenReady()
+    {
+        yield return new WaitUntil(() => NetworkManager.Singleton.IsServer && !string.IsNullOrEmpty(RelayManager.Instance.currentLobbyCode));
+
+        string message = $"LOBBY CODE: {RelayManager.Instance.currentLobbyCode}";
+        SendChatServerRpc("", message);
+    }
+
+
+    private void OnDestroy()
+    {
+        if (chatInput != null)
+        {
+            chatInput.onSubmit.RemoveListener(OnInputSubmit);
+        }
+    }
+
+    private void OnInputSubmit(string input)
+    {
+        SendMessage();
+    }
+
+  
     public void SendMessage()
     {
-        MyServerRPC(chatInput.text, NetworkManager.Singleton.LocalClientId);
+        string message = chatInput.text.Trim();
+        if (string.IsNullOrEmpty(message)) return;
+
+        string username = RelayManager.Instance.localUsername;
+
+        SendChatServerRpc(username, message);
+
+        chatInput.text = "";
+        chatInput.ActivateInputField();
     }
+    private string GetTeamColorHex(string username)
+    {
+        if (TeamManager.Instance.TeamA.Contains(username))
+            return "#FF0000"; 
+        if (TeamManager.Instance.TeamB.Contains(username))
+            return "#0000FF"; 
+
+        return "#FFFFFF"; 
+    }
+
+
+    [ServerRpc(RequireOwnership = false)]
+    private void SendChatServerRpc(string username, string message)
+    {
+        BroadcastChatClientRpc(username, message);
+    }
+
+
 
 
     [ClientRpc]
-    private void MyClientRPC(string message)
+    public void BroadcastChatClientRpc(string username, string message)
     {
-        chatText.text += "\n" + message;
+        string colorHex;
+        if(username != "")
+        {
+            colorHex = GetTeamColorHex(username);
 
+        }
+        else
+        {
+            colorHex = "#3BB143";
+        }
+        string finalMessage = $"<color={colorHex}>{username}: {message}</color>";
+
+        GameObject newMessage = Instantiate(chatMessagePrefab, chatContent);
+        TMP_Text messageText = newMessage.GetComponent<TMP_Text>();
+        messageText.text = finalMessage;
+
+        Canvas.ForceUpdateCanvases();
+        scrollRect.verticalNormalizedPosition = 0f;
+        Canvas.ForceUpdateCanvases();
     }
 
-
-    
-    [ServerRpc(RequireOwnership = false)]
-    private void MyServerRPC(string message, ulong senderId)
-    {
-        string username = UserListManager.Singleton.GetUserNameById(senderId);
-        message = username + ": " + message;
-
-        MyClientRPC(message);
-    }
 
 }

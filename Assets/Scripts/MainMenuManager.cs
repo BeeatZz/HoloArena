@@ -30,7 +30,7 @@ public class MainMenuManager : MonoBehaviour
 
     public void ConnectAsHost()
     {
-        UserListManager.Singleton.localUserName = playerName_Input.text;
+       // UserListManager.Singleton.localUserName = playerName_Input.text;
         if (SetConnectionData())
         {
             NetworkManager.Singleton.StartHost();

@@ -10,25 +10,25 @@ using Unity.Services.Lobbies;
 using Unity.Services.Lobbies.Models;
 using Unity.Services.Relay;
 using Unity.Services.Relay.Models;
+using UnityEngine.SceneManagement;
 
 public class RelayManager : MonoBehaviour
 {
-    private static RelayManager instance;
-    public static RelayManager Instance => instance;
+    public static RelayManager Instance;
 
-    private Lobby currentLobby;
-    private bool isInitialized = false;
-    private string playerProfileId;
+    Lobby currentLobby;
+    bool initialized = false;
+    string profileId;
     public string localUsername;
+    public string currentLobbyCode; 
 
-
-    private async void Awake()
+    async void Awake()
     {
-        if (instance == null)
+        if (Instance == null)
         {
-            instance = this;
+            Instance = this;
             DontDestroyOnLoad(gameObject);
-            await InitializeServicesAndAuth();
+            await Initialize();
         }
         else
         {
@@ -36,78 +36,59 @@ public class RelayManager : MonoBehaviour
         }
     }
 
-  
-    private async Task InitializeServicesAndAuth()
+    async Task Initialize()
     {
-        if (!isInitialized)
+        if (!initialized)
         {
             await UnityServices.InitializeAsync();
-            isInitialized = true;
+            initialized = true;
         }
 
-        await SignInWithRandomProfile();
+        await SignInRandom();
     }
 
-   
-    public async Task SignInWithRandomProfile()
+    public async Task SignInRandom()
     {
-        playerProfileId = "Player_" + Random.Range(1000, 9999);
-        AuthenticationService.Instance.SwitchProfile(playerProfileId);
+        profileId = "Player_" + Random.Range(1000, 9999);
+        AuthenticationService.Instance.SwitchProfile(profileId);
 
         if (!AuthenticationService.Instance.IsSignedIn)
         {
             await AuthenticationService.Instance.SignInAnonymouslyAsync();
-            Debug.Log("Signed in as: " + playerProfileId);
-        }
-        else
-        {
-            Debug.Log("Already signed in as: " + playerProfileId);
+            Debug.Log("Signed in " + profileId);
         }
     }
 
-    public async Task<bool> EnsureAuthentication()
+    public async Task<bool> CheckAuth()
     {
         if (!AuthenticationService.Instance.IsSignedIn)
         {
-            await SignInWithRandomProfile();
+            await SignInRandom();
         }
 
         return AuthenticationService.Instance.IsSignedIn;
     }
 
-    #region Room Creation & Joining
-
     public async Task CreateRoom(string username, int maxPlayers = 4)
     {
-        if (!await EnsureAuthentication())
-            return;
-        if (string.IsNullOrWhiteSpace(username))
-        {
-            Debug.LogWarning("Username cannot be empty.");
-            return;
-        }
+        if (!await CheckAuth()) return;
+        if (string.IsNullOrEmpty(username)) return;
 
+        localUsername = username;
 
-        this.localUsername = username;
+        var alloc = await RelayService.Instance.CreateAllocationAsync(maxPlayers);
+        var joinCode = await RelayService.Instance.GetJoinCodeAsync(alloc.AllocationId);
 
-        Allocation allocation = await RelayService.Instance.CreateAllocationAsync(maxPlayers);
-        string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
-
-        Debug.Log("Relay Join Code: " + joinCode);
-
-        SetupRelayTransport(
-            allocation.RelayServer.IpV4,
-            (ushort)allocation.RelayServer.Port,
-            allocation.AllocationIdBytes,
-            allocation.Key,
-            allocation.ConnectionData
+        var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+        transport.SetRelayServerData(
+            alloc.RelayServer.IpV4,
+            (ushort)alloc.RelayServer.Port,
+            alloc.AllocationIdBytes,
+            alloc.Key,
+            alloc.ConnectionData
         );
 
-        if (!NetworkManager.Singleton.StartHost())
-        {
-            Debug.LogError("Failed to start host");
-            return;
-        }
+        NetworkManager.Singleton.StartHost();
 
         var options = new CreateLobbyOptions()
         {
@@ -115,96 +96,79 @@ public class RelayManager : MonoBehaviour
             Data = new Dictionary<string, DataObject>()
         {
             { "RelayJoinCode", new DataObject(DataObject.VisibilityOptions.Member, joinCode) },
-
             { "HostName", new DataObject(DataObject.VisibilityOptions.Public, username) }
         }
         };
 
-        string lobbyName = $"{username}'s Lobby (1/{maxPlayers})";
-
+        string lobbyName = username + "'s Lobby (" + "1/" + maxPlayers + ")";
         currentLobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, options);
+        currentLobbyCode = joinCode; 
 
-        UnityEngine.SceneManagement.SceneManager.LoadScene("LobbyScene");
+
+        if (ConnectionCallbackManager.Instance != null)
+        {
+            ConnectionCallbackManager.Instance.informationalText.text = "Connected as Host";
+        }
+    }
+
+    public async Task JoinRoom(string username, Lobby lobby)
+    {
+        if (!await CheckAuth()) return;
+        if (string.IsNullOrEmpty(username)) return;
+
+        localUsername = username;
+
+        var joined = await LobbyService.Instance.JoinLobbyByIdAsync(lobby.Id);
+
+        if (!joined.Data.TryGetValue("RelayJoinCode", out var joinObj)) return;
+
+        await JoinRelay(joinObj.Value);
+
+        if (ConnectionCallbackManager.Instance != null)
+        {
+            ConnectionCallbackManager.Instance.informationalText.text = "Connected as Client";
+        }
     }
 
     public async Task JoinLobbyByCode(string username, string roomCode)
     {
-        if (!await EnsureAuthentication())
-            return;
-        if (string.IsNullOrWhiteSpace(username))
+        if (!await CheckAuth()) return;
+        if (string.IsNullOrEmpty(username)) return;
+
+        localUsername = username;
+
+        var joinedLobby = await LobbyService.Instance.JoinLobbyByCodeAsync(roomCode);
+
+        if (!joinedLobby.Data.TryGetValue("RelayJoinCode", out var joinObj)) return;
+
+        await JoinRelay(joinObj.Value);
+
+        if (ConnectionCallbackManager.Instance != null)
         {
-            Debug.LogWarning("Username cannot be empty.");
-            return;
+            ConnectionCallbackManager.Instance.informationalText.text = "Connected as Client";
         }
-
-        this.localUsername = username;
-
-        Lobby joinedLobby = await LobbyService.Instance.JoinLobbyByCodeAsync(roomCode);
-
-        if (!joinedLobby.Data.TryGetValue("RelayJoinCode", out var joinCodeObj))
-        {
-            Debug.LogError("RelayJoinCode missing!");
-            return;
-        }
-
-        await JoinRelay(joinCodeObj.Value);
-        UnityEngine.SceneManagement.SceneManager.LoadScene("LobbyScene");
     }
 
-    public async Task JoinRoom(string username, Lobby targetLobby)
+    async Task JoinRelay(string code)
     {
-        if (!await EnsureAuthentication())
-            return;
-        if (string.IsNullOrWhiteSpace(username))
-        {
-            Debug.LogWarning("Username cannot be empty.");
-            return;
-        }
+        var join = await RelayService.Instance.JoinAllocationAsync(code);
 
-        this.localUsername = username;
-
-        Lobby joined = await LobbyService.Instance.JoinLobbyByIdAsync(targetLobby.Id);
-
-        if (!joined.Data.TryGetValue("RelayJoinCode", out var joinCodeObj))
-        {
-            Debug.LogError("RelayJoinCode missing!");
-            return;
-        }
-
-        await JoinRelay(joinCodeObj.Value);
-        UnityEngine.SceneManagement.SceneManager.LoadScene("LobbyScene");
-    }
-
-    private async Task JoinRelay(string relayJoinCode)
-    {
-        JoinAllocation joinAlloc = await RelayService.Instance.JoinAllocationAsync(relayJoinCode);
-
-        SetupRelayTransport(
-            joinAlloc.RelayServer.IpV4,
-            (ushort)joinAlloc.RelayServer.Port,
-            joinAlloc.AllocationIdBytes,
-            joinAlloc.Key,
-            joinAlloc.ConnectionData,
-            joinAlloc.HostConnectionData
+        var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+        transport.SetRelayServerData(
+            join.RelayServer.IpV4,
+            (ushort)join.RelayServer.Port,
+            join.AllocationIdBytes,
+            join.Key,
+            join.ConnectionData,
+            join.HostConnectionData
         );
 
-        if (!NetworkManager.Singleton.StartClient())
-        {
-            Debug.LogError("Failed to start client");
-        }
+        NetworkManager.Singleton.StartClient();
     }
-
-    #endregion
-
-    #region Lobby Query
 
     public async Task<List<Lobby>> GetJoinableLobbies()
     {
-        if (!await EnsureAuthentication())
-        {
-            Debug.LogWarning("Cannot query lobbies: not authenticated.");
-            return new List<Lobby>();
-        }
+        if (!await CheckAuth()) return new List<Lobby>();
 
         var query = new QueryLobbiesOptions()
         {
@@ -214,26 +178,7 @@ public class RelayManager : MonoBehaviour
             }
         };
 
-        QueryResponse response = await LobbyService.Instance.QueryLobbiesAsync(query);
-        return response.Results;
+        var result = await LobbyService.Instance.QueryLobbiesAsync(query);
+        return result.Results;
     }
-
-    #endregion
-
-    #region Transport Setup
-
-    private void SetupRelayTransport(string ip, ushort port, byte[] allocationIdBytes, byte[] key, byte[] connectionData, byte[] hostConnectionData = null)
-    {
-        var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-        transport.SetRelayServerData(
-            ip,
-            port,
-            allocationIdBytes,
-            key,
-            connectionData,
-            hostConnectionData
-        );
-    }
-
-    #endregion
 }

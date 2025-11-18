@@ -14,19 +14,18 @@ public class LobbyUI : MonoBehaviour
     {
         string userName = playerUsername.text;
 
-        if (!await RelayManager.Instance.EnsureAuthentication())
+        if (!await RelayManager.Instance.CheckAuth())
         {
-            Debug.LogWarning("Cannot refresh lobbies: not authenticated.");
             return;
         }
 
         List<Lobby> lobbies = await RelayManager.Instance.GetJoinableLobbies();
 
-        // Clear old list
         foreach (Transform t in lobbyListParent)
+        {
             Destroy(t.gameObject);
+        }
 
-        // Populate UI
         foreach (Lobby lobby in lobbies)
         {
             GameObject entryGO = Instantiate(lobbyEntryPrefab, lobbyListParent);

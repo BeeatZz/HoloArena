@@ -1,6 +1,7 @@
+using System.Collections;
+using TMPro;
 using Unity.Netcode;
 using UnityEngine;
-using TMPro;
 using UnityEngine.SceneManagement;
 
 public class ConnectionCallbackManager : MonoBehaviour
@@ -25,10 +26,16 @@ public class ConnectionCallbackManager : MonoBehaviour
 
     private void OnEnable()
     {
-        NetworkManager.Singleton.OnClientStarted += OnClientStartedMethod;
-        NetworkManager.Singleton.OnClientStopped += OnClientStoppedMethod;
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientStarted += OnClientStartedMethod;
+            NetworkManager.Singleton.OnClientStopped += OnClientStoppedMethod;
+        }
+        else
+        {
+            StartCoroutine(WaitForNetworkManager());
+        }
     }
-
     private void OnDisable()
     {
         if (NetworkManager.Singleton != null)
@@ -37,6 +44,16 @@ public class ConnectionCallbackManager : MonoBehaviour
             NetworkManager.Singleton.OnClientStopped -= OnClientStoppedMethod;
         }
     }
+
+    private IEnumerator WaitForNetworkManager()
+    {
+        while (NetworkManager.Singleton == null)
+            yield return null;
+
+        NetworkManager.Singleton.OnClientStarted += OnClientStartedMethod;
+        NetworkManager.Singleton.OnClientStopped += OnClientStoppedMethod;
+    }
+
 
     private void OnClientStoppedMethod(bool obj)
     {
@@ -48,6 +65,18 @@ public class ConnectionCallbackManager : MonoBehaviour
     {
         informationalText.text = "Connected as " + (NetworkManager.Singleton.IsHost ? "Host" : "Client");
 
-        SceneManager.LoadScene("LobbyScene", LoadSceneMode.Single);
+        if (NetworkManager.Singleton.IsHost)
+        {
+            StartCoroutine(LoadLobbySceneNextFrame());
+        }
     }
+
+    private IEnumerator LoadLobbySceneNextFrame()
+    {
+        yield return null;
+
+        Debug.Log("Loading LobbyScene via NetworkManager.SceneManager");
+        NetworkManager.Singleton.SceneManager.LoadScene("LobbyScene", LoadSceneMode.Single);
+    }
+
 }
