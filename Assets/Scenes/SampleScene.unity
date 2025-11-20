@@ -1782,6 +1782,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RelayManager
   localUsername: 
+  currentLobbyCode: 
 --- !u!4 &951431714
 Transform:
   m_ObjectHideFlags: 0

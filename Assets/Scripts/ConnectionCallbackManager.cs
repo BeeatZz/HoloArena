@@ -30,18 +30,21 @@ public class ConnectionCallbackManager : MonoBehaviour
         {
             NetworkManager.Singleton.OnClientStarted += OnClientStartedMethod;
             NetworkManager.Singleton.OnClientStopped += OnClientStoppedMethod;
+            NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnectedCallback;
         }
         else
         {
             StartCoroutine(WaitForNetworkManager());
         }
     }
+
     private void OnDisable()
     {
         if (NetworkManager.Singleton != null)
         {
             NetworkManager.Singleton.OnClientStarted -= OnClientStartedMethod;
             NetworkManager.Singleton.OnClientStopped -= OnClientStoppedMethod;
+            NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnectedCallback;
         }
     }
 
@@ -52,8 +55,8 @@ public class ConnectionCallbackManager : MonoBehaviour
 
         NetworkManager.Singleton.OnClientStarted += OnClientStartedMethod;
         NetworkManager.Singleton.OnClientStopped += OnClientStoppedMethod;
+        NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnectedCallback;
     }
-
 
     private void OnClientStoppedMethod(bool obj)
     {
@@ -79,4 +82,27 @@ public class ConnectionCallbackManager : MonoBehaviour
         NetworkManager.Singleton.SceneManager.LoadScene("LobbyScene", LoadSceneMode.Single);
     }
 
+    private void OnClientConnectedCallback(ulong clientId)
+    {
+        if (!NetworkManager.Singleton.IsServer) return;
+
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "LobbyScene")
+            return;
+
+        SpawnLobbyPlayer(clientId);
+    }
+
+
+    private void SpawnLobbyPlayer(ulong clientId)
+    {
+        GameObject prefab = Resources.Load<GameObject>("LobbyPlayer");
+        if (prefab == null)
+        {
+            Debug.LogError("LobbyPlayer prefab not found in Resources folder!");
+            return;
+        }
+
+        GameObject playerObj = Instantiate(prefab);
+        playerObj.GetComponent<NetworkObject>().SpawnAsPlayerObject(clientId);
+    }
 }

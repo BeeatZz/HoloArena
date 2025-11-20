@@ -54,14 +54,33 @@ public class TeamSelectionUI : MonoBehaviour
     }
 
 
-    private void RefreshUI()
+    public void RefreshUI()
     {
         teamAText.text = "Team A:\n";
         foreach (var name in TeamManager.Instance.TeamA)
-            teamAText.text += name + "\n";
+        {
+            LobbyPlayer player = FindLobbyPlayerByUsername(name.ToString());
+            string color = (player != null && player.IsReady.Value) ? "<color=green>" : "<color=white>";
+            teamAText.text += $"{color}{name}</color>\n";
+        }
 
         teamBText.text = "Team B:\n";
         foreach (var name in TeamManager.Instance.TeamB)
-            teamBText.text += name + "\n";
+        {
+            LobbyPlayer player = FindLobbyPlayerByUsername(name.ToString());
+            string color = (player != null && player.IsReady.Value) ? "<color=green>" : "<color=white>";
+            teamBText.text += $"{color}{name}</color>\n";
+        }
     }
+
+    private LobbyPlayer FindLobbyPlayerByUsername(string username)
+    {
+        foreach (var player in FindObjectsOfType<LobbyPlayer>())
+        {
+            if (player.Username.Value.ToString() == username)
+                return player;
+        }
+        return null;
+    }
+
 }
