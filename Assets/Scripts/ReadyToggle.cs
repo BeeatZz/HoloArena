@@ -27,13 +27,10 @@ public class ReadyToggle : MonoBehaviour
         while ((localPlayer = FindLocalLobbyPlayer()) == null)
             yield return null;
 
-        // Set initial toggle state
         toggle.isOn = localPlayer.IsReady.Value;
 
-        // Listen for toggle changes from UI
         toggle.onValueChanged.AddListener(OnToggleChanged);
 
-        // Listen for changes from network
         localPlayer.IsReady.OnValueChanged += OnReadyChanged;
     }
 
@@ -48,10 +45,8 @@ public class ReadyToggle : MonoBehaviour
 
     private void OnReadyChanged(bool oldValue, bool newValue)
     {
-        // Update toggle to reflect network state
         toggle.isOn = newValue;
 
-        // Optional: refresh the TeamSelectionUI immediately
         var teamUI = FindObjectOfType<TeamSelectionUI>();
         teamUI?.RefreshUI();
     }

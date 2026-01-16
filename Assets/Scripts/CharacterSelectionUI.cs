@@ -24,21 +24,17 @@ public class CharacterSelectButton : MonoBehaviour
 
     private IEnumerator WaitForLocalPlayerAndSubscribe()
     {
-        // Wait for NetworkManager and client
         while (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsClient)
             yield return null;
 
-        // Wait until the local LobbyPlayer exists
         while ((localPlayer = FindLocalLobbyPlayer()) == null)
             yield return null;
 
-        // Set initial highlight
-        UpdateHighlight();
+        localPlayer.SetCharacterServerRpc(localPlayer.CharacterIndex.Value);
 
-        // When the local player's character index changes (from network), update highlights
+        UpdateHighlight();
         localPlayer.CharacterIndex.OnValueChanged += (oldV, newV) => UpdateHighlight();
 
-        // Also refresh when players list changes in UI (optional)
         var teamUi = FindObjectOfType<TeamSelectionUI>();
         teamUi?.RefreshUI();
     }
@@ -53,13 +49,11 @@ public class CharacterSelectButton : MonoBehaviour
 
         localPlayer.SetCharacterServerRpc(characterIndex);
 
-        // instant local feedback - UpdateHighlight will also run once the network variable replicates
         UpdateHighlight();
     }
 
     private void UpdateHighlight()
     {
-        // Local player might not be set yet
         if (localPlayer == null) localPlayer = FindLocalLobbyPlayer();
         if (localPlayer == null) return;
 

@@ -2,7 +2,8 @@ using TMPro;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
-
+using System.Collections;
+using System.Linq;
 public class LobbyChatManager : NetworkBehaviour
 {
     [Header("UI References")]
@@ -11,7 +12,7 @@ public class LobbyChatManager : NetworkBehaviour
 
     [SerializeField] private TMP_InputField chatInput;  
     [SerializeField] private ScrollRect scrollRect;
-
+    private Coroutine countdownCoroutine;
     private void Start()
     {
         if (chatInput != null)
@@ -23,15 +24,49 @@ public class LobbyChatManager : NetworkBehaviour
         }
     }
 
-    private System.Collections.IEnumerator SendLobbyCodeWhenReady()
+    private IEnumerator SendLobbyCodeWhenReady()
     {
         yield return new WaitUntil(() => NetworkManager.Singleton.IsServer && !string.IsNullOrEmpty(RelayManager.Instance.currentLobbyCode));
 
-        string message = $"LOBBY CODE: {RelayManager.Instance.currentLobbyCode}";
-        SendChatServerRpc("", message);
+        string codeMessage = $"LOBBY CODE: {RelayManager.Instance.currentLobbyCode}";
+        SendChatServerRpc("", codeMessage);
+
+        string instruction = "When all players are ready, the countdown will start.";
+        SendChatServerRpc("", instruction);
     }
 
+    public void CheckReadyStatus()
+    {
+        if (!IsServer) return;
 
+        var players = FindObjectsOfType<LobbyPlayer>();
+
+        bool allReady = players.Length > 0 && players.All(p => p.IsReady.Value);
+
+        if (allReady && countdownCoroutine == null)
+        {
+            countdownCoroutine = StartCoroutine(StartGameCountdown());
+        }
+        else if (!allReady && countdownCoroutine != null)
+        {
+            StopCoroutine(countdownCoroutine);
+            countdownCoroutine = null;
+            SendChatServerRpc("", "Countdown cancelled - someone is not ready");
+        }
+    }
+
+    private IEnumerator StartGameCountdown()
+    {
+        for (int i = 3; i > 0; i--)
+        {
+            SendChatServerRpc("", $"Game starting in {i}...");
+            yield return new WaitForSeconds(1f);
+        }
+
+        SendChatServerRpc("", "GO!");
+
+        NetworkManager.Singleton.SceneManager.LoadScene("TestScene", UnityEngine.SceneManagement.LoadSceneMode.Single);
+    }
     private void OnDestroy()
     {
         if (chatInput != null)

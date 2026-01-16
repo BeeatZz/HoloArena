@@ -20,8 +20,8 @@ public class RelayManager : MonoBehaviour
     bool initialized = false;
     string profileId;
     public string localUsername;
-    public string currentLobbyCode; 
-
+    public string currentLobbyCode;
+    private float heartbeatTimer;
     async void Awake()
     {
         if (Instance == null)
@@ -58,7 +58,24 @@ public class RelayManager : MonoBehaviour
             Debug.Log("Signed in " + profileId);
         }
     }
+    void Update()
+    {
+        HandleLobbyHeartbeat();
+    }
+    async void HandleLobbyHeartbeat()
+    {
+        if (currentLobby != null && currentLobby.HostId == AuthenticationService.Instance.PlayerId)
+        {
+            heartbeatTimer -= Time.deltaTime;
+            if (heartbeatTimer <= 0f)
+            {
+                float heartbeatInterval = 15f;
+                heartbeatTimer = heartbeatInterval;
 
+                await LobbyService.Instance.SendHeartbeatPingAsync(currentLobby.Id);
+            }
+        }
+    }
     public async Task<bool> CheckAuth()
     {
         if (!AuthenticationService.Instance.IsSignedIn)
@@ -69,7 +86,7 @@ public class RelayManager : MonoBehaviour
         return AuthenticationService.Instance.IsSignedIn;
     }
 
-    public async Task CreateRoom(string username, int maxPlayers = 4)
+    public async Task CreateRoom(string username, bool isPrivate, int maxPlayers = 4)
     {
         if (!await CheckAuth()) return;
         if (string.IsNullOrEmpty(username)) return;
@@ -88,11 +105,9 @@ public class RelayManager : MonoBehaviour
             alloc.ConnectionData
         );
 
-        NetworkManager.Singleton.StartHost();
-
         var options = new CreateLobbyOptions()
         {
-            IsPrivate = false,
+            IsPrivate = isPrivate, 
             Data = new Dictionary<string, DataObject>()
         {
             { "RelayJoinCode", new DataObject(DataObject.VisibilityOptions.Member, joinCode) },
@@ -100,17 +115,20 @@ public class RelayManager : MonoBehaviour
         }
         };
 
-        string lobbyName = username + "'s Lobby (" + "1/" + maxPlayers + ")";
+        string lobbyName = username + "'s Lobby";
         currentLobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, options);
-        currentLobbyCode = joinCode; 
+        currentLobbyCode = currentLobby.LobbyCode;
 
+        if (currentLobby != null)
+        {
+            NetworkManager.Singleton.StartHost();
+        }
 
         if (ConnectionCallbackManager.Instance != null)
         {
-            ConnectionCallbackManager.Instance.informationalText.text = "Connected as Host";
+            ConnectionCallbackManager.Instance.informationalText.text = isPrivate ? "Private Lobby Created" : "Public Lobby Created";
         }
     }
-
     public async Task JoinRoom(string username, Lobby lobby)
     {
         if (!await CheckAuth()) return;
@@ -137,15 +155,38 @@ public class RelayManager : MonoBehaviour
 
         localUsername = username;
 
-        var joinedLobby = await LobbyService.Instance.JoinLobbyByCodeAsync(roomCode);
-
-        if (!joinedLobby.Data.TryGetValue("RelayJoinCode", out var joinObj)) return;
-
-        await JoinRelay(joinObj.Value);
-
-        if (ConnectionCallbackManager.Instance != null)
+        
+        //gemini me dio esto, funciona pero no termino de entender cual era el problema
+        try
         {
-            ConnectionCallbackManager.Instance.informationalText.text = "Connected as Client";
+            var lobby = await LobbyService.Instance.JoinLobbyByCodeAsync(roomCode);
+
+            currentLobby = lobby;
+            currentLobbyCode = lobby.LobbyCode;
+
+            if (lobby.Data == null || !lobby.Data.ContainsKey("RelayJoinCode"))
+            {
+                Debug.Log("Relay code not found yet, refreshing lobby data...");
+                lobby = await LobbyService.Instance.GetLobbyAsync(lobby.Id);
+                currentLobby = lobby;
+            }
+
+            if (lobby.Data.TryGetValue("RelayJoinCode", out var joinObj))
+            {
+                Debug.Log($"Joining Relay with code: {joinObj.Value}");
+                await JoinRelay(joinObj.Value);
+
+                if (ConnectionCallbackManager.Instance != null)
+                    ConnectionCallbackManager.Instance.informationalText.text = "Connected as Client";
+            }
+            else
+            {
+                Debug.LogError("Failed to find RelayJoinCode even after refresh!");
+            }
+        }
+        catch (LobbyServiceException e)
+        {
+            Debug.LogError($"Join Lobby Error: {e.Message}");
         }
     }
 
@@ -186,12 +227,12 @@ public class RelayManager : MonoBehaviour
         if (currentLobby == null)
             return;
 
+        //gemini me dio esto, funciona pero no termino de entender cual era el problema
         try
         {
             string lobbyId = currentLobby.Id;
             string playerId = Unity.Services.Authentication.AuthenticationService.Instance.PlayerId;
 
-            // If we are the host, delete the whole lobby
             if (currentLobby.HostId == playerId)
             {
                 Debug.Log("RelayManager: Deleting lobby (host is leaving).");

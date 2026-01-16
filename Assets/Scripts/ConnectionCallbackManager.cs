@@ -3,7 +3,7 @@ using TMPro;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using Unity.Services.Lobbies;  // Needed for lobby cleanup
+using Unity.Services.Lobbies; 
 
 public class ConnectionCallbackManager : MonoBehaviour
 {
@@ -68,13 +68,11 @@ public class ConnectionCallbackManager : MonoBehaviour
         SubscribeCallbacks();
     }
 
-    // ---------------------------------------------------------------------
-    //  On Client Start (host or client)
-    // ---------------------------------------------------------------------
+  
 
     private void OnClientStartedMethod()
     {
-        informationalText.text = "Connected as " + (NetworkManager.Singleton.IsHost ? "Host" : "Client");
+        //informationalText.text = "Connected as " + (NetworkManager.Singleton.IsHost ? "Host" : "Client");
 
         if (NetworkManager.Singleton.IsHost)
         {
@@ -90,47 +88,27 @@ public class ConnectionCallbackManager : MonoBehaviour
         NetworkManager.Singleton.SceneManager.LoadScene("LobbyScene", LoadSceneMode.Single);
     }
 
-    // ---------------------------------------------------------------------
-    //  Spawn Lobby Player for clients entering lobby
-    // ---------------------------------------------------------------------
-
-    
-
-   
-
-    // ---------------------------------------------------------------------
-    //  Cleanup on Disconnect (client or host)
-    // ---------------------------------------------------------------------
 
     private async void OnClientDisconnectCallback(ulong clientId)
     {
-        // If *this* client disconnected, perform cleanup
         if (clientId == NetworkManager.Singleton.LocalClientId)
         {
-            informationalText.text = "Disconnected";
 
-            // Clean up Lobby (Unity Lobby API)
             if (RelayManager.Instance != null)
                 await RelayManager.Instance.LeaveLobby();
 
-            // Destroy all LobbyPlayer objects left over
             CleanupLobbyPlayerUI();
 
-            // Shutdown netcode safely
             if (NetworkManager.Singleton != null)
                 NetworkManager.Singleton.Shutdown();
 
-            // Return to main menu
             SceneManager.LoadScene("MainMenu");
         }
     }
 
-    // This is called by NetworkManager when host shuts down
     private async void OnClientStoppedMethod(bool wasHost)
     {
-        informationalText.text = "Disconnected";
 
-        // Lobby cleanup
         if (RelayManager.Instance != null)
             await RelayManager.Instance.LeaveLobby();
 
@@ -139,10 +117,7 @@ public class ConnectionCallbackManager : MonoBehaviour
         SceneManager.LoadScene("MainMenu");
     }
 
-    // ---------------------------------------------------------------------
-    //  UI Cleanup: removes leftover lobby UI elements
-    // ---------------------------------------------------------------------
-
+   
     private void CleanupLobbyPlayerUI()
     {
         var players = GameObject.FindObjectsOfType<LobbyPlayer>();

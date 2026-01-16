@@ -38,15 +38,12 @@ public class TeamSelectionUI : MonoBehaviour
 
         StartCoroutine(WaitForTeamManager());
 
-        // 🔥 Ensure UIs always re-scan for player objects
         NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
 
-        // 🔥 Also scan on start because players can already exist
         StartCoroutine(ScanAfterFrame());
     }
     private void OnClientConnected(ulong clientId)
     {
-        // Scan for players every time anyone connects
         ScanForPlayers();
     }
     private IEnumerator ScanAfterFrame()
@@ -79,29 +76,25 @@ public class TeamSelectionUI : MonoBehaviour
         TeamManager.Instance.RequestJoinTeam(username, team);
     }
 
-    // 🔥 FIX: This finds and registers ALL LobbyPlayers
     public void ScanForPlayers()
     {
         foreach (var p in FindObjectsOfType<LobbyPlayer>())
             RegisterPlayer(p);
     }
 
-    // 🔥 FIX: This ensures clients subscribe to IsReady updates
     public void RegisterPlayer(LobbyPlayer player)
     {
         if (trackedPlayers.Contains(player)) return;
 
         trackedPlayers.Add(player);
 
-        // Subscribe to ready changes
         player.IsReady.OnValueChanged += (_, _) => RefreshUI();
 
-        // Force update immediately
         RefreshUI();
     }
     private IEnumerator DelayedScan()
     {
-        yield return new WaitForSeconds(0.1f); // ensure LobbyPlayers spawned
+        yield return new WaitForSeconds(0.1f);
         ScanForPlayers();
     }
 
@@ -109,12 +102,11 @@ public class TeamSelectionUI : MonoBehaviour
     public void RefreshUI()
     {
         if (TeamManager.Instance == null)
-            return; // or show "Loading..." text
+            return; 
 
         if (TeamManager.Instance.TeamA == null || TeamManager.Instance.TeamB == null)
             return;
 
-        // === Team A ===
         teamAText.text = "Team A:\n";
         foreach (var name in TeamManager.Instance.TeamA)
         {
@@ -124,7 +116,6 @@ public class TeamSelectionUI : MonoBehaviour
             teamAText.text += $"{color}{name}</color>\n";
         }
 
-        // === Team B ===
         teamBText.text = "Team B:\n";
         foreach (var name in TeamManager.Instance.TeamB)
         {
