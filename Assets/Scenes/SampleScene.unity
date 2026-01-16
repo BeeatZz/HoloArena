@@ -4237,11 +4237,11 @@ MonoBehaviour:
   NetworkConfig:
     ProtocolVersion: 0
     NetworkTransport: {fileID: 2090045491}
-    PlayerPrefab: {fileID: 0}
+    PlayerPrefab: {fileID: 2082308688659630762, guid: 7b255bc510af94f43ad0613bc981d6bf, type: 3}
     Prefabs:
       NetworkPrefabsLists:
       - {fileID: 11400000, guid: 8536cb404d37ffb4daf762f16e2778f0, type: 2}
-    TickRate: 60
+    TickRate: 100
     ClientConnectionBufferTimeout: 10
     ConnectionApproval: 0
     ConnectionData: 

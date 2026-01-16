@@ -181,4 +181,35 @@ public class RelayManager : MonoBehaviour
         var result = await LobbyService.Instance.QueryLobbiesAsync(query);
         return result.Results;
     }
+    public async Task LeaveLobby()
+    {
+        if (currentLobby == null)
+            return;
+
+        try
+        {
+            string lobbyId = currentLobby.Id;
+            string playerId = Unity.Services.Authentication.AuthenticationService.Instance.PlayerId;
+
+            // If we are the host, delete the whole lobby
+            if (currentLobby.HostId == playerId)
+            {
+                Debug.Log("RelayManager: Deleting lobby (host is leaving).");
+                await LobbyService.Instance.DeleteLobbyAsync(lobbyId);
+            }
+            else
+            {
+                Debug.Log("RelayManager: Removing player from lobby.");
+                await LobbyService.Instance.RemovePlayerAsync(lobbyId, playerId);
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("RelayManager: LeaveLobby failed (probably already removed or lobby expired): " + e.Message);
+        }
+
+        currentLobby = null;
+        currentLobbyCode = null;
+    }
+
 }

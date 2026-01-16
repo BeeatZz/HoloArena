@@ -1,19 +1,19 @@
-using System.Globalization;
-using Unity.Collections;
 using Unity.Netcode;
-using UnityEditor.PackageManager;
+using Unity.Collections;
+using UnityEngine;
+using System.Collections;
 
 public class LobbyPlayer : NetworkBehaviour
 {
-    public NetworkVariable<bool> IsReady = new NetworkVariable<bool>(false);
-    public NetworkVariable<int> CharacterIndex = new NetworkVariable<int>(0);
-    public NetworkVariable<FixedString64Bytes> Username = new NetworkVariable<FixedString64Bytes>();
+    public NetworkVariable<bool> IsReady = new(false);
+    public NetworkVariable<int> CharacterIndex = new(0);
+    public NetworkVariable<FixedString64Bytes> Username = new();
 
     private TeamSelectionUI teamUI;
 
+    // inside LobbyPlayer.cs
     public override void OnNetworkSpawn()
     {
-        // Find the TeamSelectionUI in the scene
         teamUI = FindObjectOfType<TeamSelectionUI>();
 
         if (IsOwner)
@@ -21,33 +21,64 @@ public class LobbyPlayer : NetworkBehaviour
             Username.Value = RelayManager.Instance.localUsername;
         }
 
-        if (IsClient)
+        // Subscribe to changes
+        IsReady.OnValueChanged += OnReadyChanged;
+        CharacterIndex.OnValueChanged += OnCharacterChanged;
+        Username.OnValueChanged += (oldV, newV) => teamUI?.RefreshUI();
+
+        // Immediately register if UI exists
+        if (TeamSelectionUI.Instance != null)
         {
-            IsReady.OnValueChanged += OnReadyChanged;
-            CharacterIndex.OnValueChanged += OnCharacterChanged;
-            Username.OnValueChanged += (oldValue, newValue) => teamUI?.RefreshUI();
+            TeamSelectionUI.Instance.RegisterPlayer(this);
         }
+        else
+        {
+            StartCoroutine(RegisterWithUIWhenReady());
+        }
+
+        // Force refresh after spawn
+        teamUI?.RefreshUI();
+    }
+
+    private IEnumerator RegisterWithUIWhenReady()
+    {
+        TeamSelectionUI ui = null;
+
+        while (ui == null)
+        {
+            ui = TeamSelectionUI.Instance;
+            yield return null;
+        }
+
+        ui.RegisterPlayer(this);
+
+        // Force first refresh
+        ui.RefreshUI();
     }
 
     private void OnReadyChanged(bool oldValue, bool newValue)
     {
-        teamUI?.RefreshUI();
+        if (TeamSelectionUI.Instance != null && TeamManager.Instance != null)
+        {
+            TeamSelectionUI.Instance.RefreshUI();
+        }
     }
+
 
     private void OnCharacterChanged(int oldValue, int newValue)
     {
-        // Optional: highlight selected character
+        teamUI?.RefreshUI();
+    }
+    public override void OnNetworkDespawn()
+    {
+        var ui = FindObjectOfType<TeamSelectionUI>();
+        ui?.UnregisterPlayer(this);
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    public void SetReadyServerRpc(bool ready)
-    {
-        IsReady.Value = ready;
-    }
 
     [ServerRpc(RequireOwnership = false)]
-    public void SetCharacterServerRpc(int index)
-    {
-        CharacterIndex.Value = index;
-    }
+    public void SetReadyServerRpc(bool ready) => IsReady.Value = ready;
+
+    [ServerRpc(RequireOwnership = false)]
+    public void SetCharacterServerRpc(int index) => CharacterIndex.Value = index;
 }
